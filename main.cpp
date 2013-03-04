@@ -16,7 +16,7 @@ void PrintError<GL_COMPILE_STATUS>(GLuint shaderId)
     glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLength);
     std::string errorMessage(std::max(1, infoLength), char());
     glGetShaderInfoLog(shaderId, infoLength, NULL, &errorMessage[0]);
-    fprintf(stderr, "Compile: %s", errorMessage.c_str());
+    fprintf(stderr, "Compile: %s\n", errorMessage.c_str());
 }
 
 template <>
@@ -28,7 +28,7 @@ void PrintError<GL_LINK_STATUS>(GLuint programId)
     glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLength);
     std::string errorMessage(std::max(1, infoLength), char());
     glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
-    fprintf(stderr, "Link message: %s", errorMessage.c_str());
+    fprintf(stderr, "Link: %s\n", errorMessage.c_str());
 }
 
 GLuint CompileShader(GLuint shaderType, const char* shaderCode)
@@ -100,19 +100,35 @@ int main()
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertexBufferData), vertexBufferData, GL_STATIC_DRAW);
 
+    static const GLfloat colorData[] = {
+	1.0f, 0.0f, 0.0f,
+	0.0f, 1.0f, 0.0f,
+	0.0f, 0.0f, 1.0f,
+    };
+
+    GLuint colorBuffer;
+    glGenBuffers(1, &colorBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(colorData), colorData, GL_STATIC_DRAW);
+
     const char shaderSource[] = ""
 	"#version 330 core\n"
-	"layout(location = 0) in vec3 vertexPosition_modelspace;\n"
+	"layout(location = 0) in vec3 in_Position;\n"
+	"layout(location = 1) in vec3 in_Color;\n"
+	"out vec4 ex_Color;\n"
 	"void main() {\n"
-	"  gl_Position.xyz = vertexPosition_modelspace;\n"
+	"  gl_Position.xyz = in_Position;\n"
 	"  gl_Position.w = 1.0;\n"
+	"  ex_Color.xyz = in_Color;\n"
+	"  ex_Color.w = 1.0;\n"
 	"}";
 
     const char fragmentSource[] = ""
 	"#version 330 core\n"
-	"out vec3 color;\n"
+	"in vec4 ex_Color;\n"
+	"out vec4 out_Color;\n"
 	"void main() {\n"
-	"  color = vec3(1,0,0);\n"
+	"  out_Color = ex_Color;\n"
 	"}";
     
     GLuint programId = LinkProgram(shaderSource, fragmentSource);
@@ -125,6 +141,11 @@ int main()
 	glEnableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+	glEnableVertexAttribArray(1);
+	glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	
 	glDisableVertexAttribArray(0);
