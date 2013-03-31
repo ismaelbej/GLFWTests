@@ -1,6 +1,8 @@
+// -*- c-file-style: "stroustrup" -*-
 #include <GL/glew.h>
 #include <GL/glfw.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <unistd.h>
 
@@ -16,7 +18,7 @@ void PrintError<GL_COMPILE_STATUS>(GLuint shaderId)
     glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLength);
     std::string errorMessage(std::max(1, infoLength), char());
     glGetShaderInfoLog(shaderId, infoLength, NULL, &errorMessage[0]);
-    fprintf(stderr, "Compile: %s\n", errorMessage.c_str());
+    std::cerr << "Compile: " << errorMessage << std::endl;
 }
 
 template <>
@@ -28,7 +30,7 @@ void PrintError<GL_LINK_STATUS>(GLuint programId)
     glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLength);
     std::string errorMessage(std::max(1, infoLength), char());
     glGetProgramInfoLog(programId, infoLength, NULL, &errorMessage[0]);
-    fprintf(stderr, "Link: %s\n", errorMessage.c_str());
+    std::cerr << "Link: " << errorMessage << std::endl;
 }
 
 GLuint CompileShader(GLuint shaderType, const char* shaderCode)
@@ -63,7 +65,10 @@ int main()
     bool running = true;
 
     if (!glfwInit())
+    {
+	std::cerr << "Failed to init GLFW " << std::endl;
 	exit(-1);
+    }
 
     glfwOpenWindowHint(GLFW_FSAA_SAMPLES, 4);
     glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, 3);
@@ -76,9 +81,11 @@ int main()
 	exit(-1);
     }
 
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK)
+    glewExperimental = GL_TRUE;
+    GLenum glewErr = glewInit();
+    if (glewErr != GLEW_OK)
     {
+	std::cerr << "Failed to init GLEW " << glewGetErrorString(glewErr) << std::endl;
 	glfwTerminate();
 	exit(-1);
     }
@@ -115,12 +122,11 @@ int main()
 	"#version 330 core\n"
 	"layout(location = 0) in vec3 in_Position;\n"
 	"layout(location = 1) in vec3 in_Color;\n"
+	"uniform mat4 MVP;\n"
 	"out vec4 ex_Color;\n"
 	"void main() {\n"
-	"  gl_Position.xyz = in_Position;\n"
-	"  gl_Position.w = 1.0;\n"
-	"  ex_Color.xyz = in_Color;\n"
-	"  ex_Color.w = 1.0;\n"
+	"  gl_Position = MVP * vec4(in_Position, 1.0);\n"
+	"  ex_Color = vec4(in_Color, 1.0);\n"
 	"}";
 
     const char fragmentSource[] = ""
@@ -132,11 +138,25 @@ int main()
 	"}";
     
     GLuint programId = LinkProgram(shaderSource, fragmentSource);
+    GLuint matrixId = glGetUniformLocation(programId, "MVP");
+
+    glm::mat4 projection = glm::perspective(45.0f, 4.0f/3.0f, 0.1f, 100.0f);
+    glm::mat4 view = glm::lookAt(glm::vec3(4.0f, 3.0f, 3.0f),
+				 glm::vec3(0.0f, 0.0f, 0.0f),
+				 glm::vec3(0.0f, 1.0f, 0.0f));
+    float angle = 0.0;
 
     while (running)
     {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glm::mat4 model = glm::rotate(glm::mat4(1.0f), 
+				      angle, 
+				      glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::mat4 MVP = projection * view * model;
+
+	glClear(GL_COLOR_BUFFER_BIT);
 	glUseProgram(programId);
+
+	glUniformMatrix4fv(matrixId, 1, GL_FALSE, &MVP[0][0]);
 
 	glEnableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
@@ -149,8 +169,11 @@ int main()
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	
 	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
 	
 	glfwSwapBuffers();
+
+	angle += 2.0;
 	
 	running = !glfwGetKey(GLFW_KEY_ESC)
 	    && glfwGetWindowParam(GLFW_OPENED);
